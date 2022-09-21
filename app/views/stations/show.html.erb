@@ -1,26 +1,72 @@
-<p style="color: green"><%= notice %></p>
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><%= link_to "Stations", stations_path %></li>
+    <li class="breadcrumb-item active" aria-current="page"><%= @station.name %></li>
+  </ol>
+</nav>
 
-<%= render @station %>
+<div class="row row-cols-2">
+  <div class="col">
 
-<table>
+    <div id="<%= dom_id @station %>" class="card">
+      <p class="card-img-top text-center">TODO: Map</p>
+      <div class="card-body">
+        <h5 class="text-truncate"><%= @station.name %></h5>
+        <h6 class="card-subtitle text-muted"><%= @station.brand %></h6>
+        <p class="card-text">
+          <address>
+            <%= @station.street %> <%= @station.house_number %><br />
+            <%= @station.post_code %> <%= @station.place %>
+          </address>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card">
+      <div class="card-body">
+        <h5>Latest prices</h5>
+        <% if @station.price_reports.latest_price -%>
+          <h6 class="card-subtitle text-muted">Reported on <%= @station.price_reports.latest_price.report_time %></h6>
+          <dl>
+            <dt>Diesel</dt>
+            <dd><%= sprintf('%.3f €', @station.price_reports.latest_price.diesel.price.fdiv(1000)) %></dd>
+            <dt>E5</dt>
+            <dd><%= sprintf('%.3f €', @station.price_reports.latest_price.e5.price.fdiv(1000)) %></dd>
+            <dt>E10</dt>
+            <dd><%= sprintf('%.3f €', @station.price_reports.latest_price.e10.price.fdiv(1000)) %></dd>
+          </dl>
+        <% else %>
+          <h6 class="card-subtitle text-muted">No prices reported</h6>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<h5>Price changes</h5>
+
+<table class="table table-striped table-hover table-bordered">
+  <thead>
   <tr>
-    <th>Date</th>
-    <th>Number of changes</th>
-    <th>Average Diesel Change</th>
-    <th>Average Petrol E5 Change</th>
-    <th>Average Petrol E10 Change</th>
+    <th>Time</th>
+    <th>Changes</th>
+    <th>Diesel</th>
+    <th>E5</th>
+    <th>E10</th>
   </tr>
+  </thead>
+  <tbody>
   <% @station.aggregated_prices.each do |aggregated_price| %>
     <tr>
       <td><%= sprintf('%02d:%02d', aggregated_price['timeframe']['hour'], aggregated_price['timeframe']['minute']) %></td>
       <td><%= aggregated_price['changes'] %></td>
-      <td><%= sprintf('% .3f', aggregated_price['dieselChange'] / 1000) %></td>
-      <td><%= sprintf('% .3f', aggregated_price['e5Change'] / 1000) %></td>
-      <td><%= sprintf('% .3f', aggregated_price['e10Change'] / 1000) %></td>
+      <td><%= render "price_change", change: aggregated_price['dieselChange'] %></td>
+      <td><%= render "price_change", change: aggregated_price['e5Change'] %></td>
+      <td><%= render "price_change", change: aggregated_price['e10Change'] %></td>
     </tr>
   <% end %>
+  </tbody>
 </table>
-
-<div>
-  <%= link_to "Back to stations", stations_path %>
-</div>

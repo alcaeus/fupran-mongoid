@@ -1,0 +1,11 @@
+<% if change > 0 %>
+  <i class="bi-arrow-up-right text-danger"></i>
+<% else %>
+  <% if change < 0  %>
+    <i class="bi-arrow-down-right text-success"></i>
+  <% else %>
+    <i class="bi-arrow-right"></i>
+  <% end %>
+<% end %>
+
+<%= sprintf('%+.3f €', change.fdiv(1000)) %>

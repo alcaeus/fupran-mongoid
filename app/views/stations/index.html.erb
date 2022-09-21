@@ -2,12 +2,38 @@
 
 <h1>Stations</h1>
 
-<div id="stations">
+<div id="stations" class="row row-cols-3 gy-4">
   <% @stations.each do |station| %>
-    <%= render station %>
-    <p>
-      <%= link_to "Show this station", station %>
-    </p>
+    <div class="col">
+        <div id="<%= dom_id station %>" class="card">
+          <div class="card-body">
+            <h5 class="text-truncate"><%= station.name %></h5>
+            <h6 class="card-subtitle text-muted"><%= station.brand %></h6>
+            <p class="card-text">
+              <address>
+                <%= station.street %> <%= station.house_number %><br />
+                <%= station.post_code %> <%= station.place %>
+              </address>
+            </p>
+          </div>
+
+          <ul class="list-group list-group-flush">
+            <% if station.price_reports.latest_price -%>
+              <li class="list-group-item">Diesel: <%= sprintf('%.3f €', station.price_reports.latest_price.diesel.price.fdiv(1000)) %></li>
+              <li class="list-group-item">E5: <%= sprintf('%.3f €', station.price_reports.latest_price.e5.price.fdiv(1000)) %></li>
+              <li class="list-group-item">E10: <%= sprintf('%.3f €', station.price_reports.latest_price.e10.price.fdiv(1000)) %></li>
+            <% else %>
+              <li class="list-group-item">Diesel: --</li>
+              <li class="list-group-item">E5: --</li>
+              <li class="list-group-item">E10: --</li>
+            <% end -%>
+          </ul>
+
+          <div class="card-body">
+            <%= link_to "Show this station", station, class: "card-link" %>
+          </div>
+        </div>
+    </div>
   <% end %>
 </div>
 
