@@ -1,0 +1,26 @@
+<p style="color: green"><%= notice %></p>
+
+<%= render @station %>
+
+<table>
+  <tr>
+    <th>Date</th>
+    <th>Number of changes</th>
+    <th>Average Diesel Change</th>
+    <th>Average Petrol E5 Change</th>
+    <th>Average Petrol E10 Change</th>
+  </tr>
+  <% @station.aggregated_prices.each do |aggregated_price| %>
+    <tr>
+      <td><%= sprintf('%02d:%02d', aggregated_price['timeframe']['hour'], aggregated_price['timeframe']['minute']) %></td>
+      <td><%= aggregated_price['changes'] %></td>
+      <td><%= sprintf('% .3f', aggregated_price['dieselChange'] / 1000) %></td>
+      <td><%= sprintf('% .3f', aggregated_price['e5Change'] / 1000) %></td>
+      <td><%= sprintf('% .3f', aggregated_price['e10Change'] / 1000) %></td>
+    </tr>
+  <% end %>
+</table>
+
+<div>
+  <%= link_to "Back to stations", stations_path %>
+</div>

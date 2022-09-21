@@ -1,0 +1,14 @@
+<p style="color: green"><%= notice %></p>
+
+<h1>Price reports</h1>
+
+<div id="price_reports">
+  <% @price_reports.each do |price_report| %>
+    <%= render price_report %>
+    <p>
+      <%= link_to "Show this price report", price_report %>
+    </p>
+  <% end %>
+</div>
+
+<%#= paginate @price_reports %>

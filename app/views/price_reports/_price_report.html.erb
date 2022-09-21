@@ -1,0 +1,30 @@
+<div id="<%= dom_id price_report %>">
+  <p>
+    <strong>Report time:</strong>
+    <%= price_report.report_time %>
+  </p>
+
+  <table>
+    <tr>
+      <th>Fuel type</th>
+      <th>Price</th>
+      <th>Changed</th>
+    </tr>
+    <tr>
+      <td>Diesel</td>
+      <td><%= price_report.diesel.price %></td>
+      <td><%= price_report.diesel.price_changed %></td>
+    </tr>
+    <tr>
+      <td>Petrol E5</td>
+      <td><%= price_report.e5.price %></td>
+      <td><%= price_report.e5.price_changed %></td>
+    </tr>
+    <tr>
+      <td>Petrol E10</td>
+      <td><%= price_report.e10.price %></td>
+      <td><%= price_report.e10.price_changed %></td>
+    </tr>
+  </table>
+
+</div>

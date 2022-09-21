@@ -1,0 +1,21 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  report_time: 2022-09-20 10:40:10
+  station_uuid: MyString
+  price_diesel: 1.5
+  price_e5: 1.5
+  price_e10: 1.5
+  price_diesel_changed: false
+  price_e5_changed: false
+  price_e10_changed: false
+
+two:
+  report_time: 2022-09-20 10:40:10
+  station_uuid: MyString
+  price_diesel: 1.5
+  price_e5: 1.5
+  price_e10: 1.5
+  price_diesel_changed: false
+  price_e5_changed: false
+  price_e10_changed: false
