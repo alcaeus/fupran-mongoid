@@ -77,6 +77,29 @@
   </div>
 </div>
 
+<h5>Average price difference</h5>
+
+<table class="table table-striped table-hover table-bordered">
+  <thead>
+  <tr>
+    <th>Time</th>
+    <th>Diesel (times)</th>
+    <th>E5 (times)</th>
+    <th>E10 (times)</th>
+  </tr>
+  </thead>
+  <tbody>
+  <% @station.price_differences.each do |price_difference| %>
+    <tr>
+      <td><%= sprintf('%02d:%02d', price_difference['timeframe']['hour'], price_difference['timeframe']['minute']) %></td>
+      <td><%= render "price_change", change: price_difference['diesel']['higherThanLowest'] %> (<%= price_difference['diesel']['times'].to_i %> times)</td>
+      <td><%= render "price_change", change: price_difference['e5']['higherThanLowest'] %> (<%= price_difference['e5']['times'].to_i %> times)</td>
+      <td><%= render "price_change", change: price_difference['e10']['higherThanLowest'] %> (<%= price_difference['e10']['times'].to_i %> times)</td>
+    </tr>
+  <% end %>
+  </tbody>
+</table>
+
 <h5>Price changes</h5>
 
 <table class="table table-striped table-hover table-bordered">

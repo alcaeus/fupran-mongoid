@@ -28,6 +28,15 @@ class Station
     result == nil ? 0 : result['changesPerDay']
   end
 
+  def price_differences
+    PriceReport.collection.aggregate(
+      [
+        *get_diff_pipeline,
+        sort_by_timeframe
+      ]
+    )
+  end
+
   def aggregated_prices_pipeline
     [
       match_station,
@@ -172,6 +181,217 @@ class Station
         {
           '$limit' => 5,
         }
+      ]
+    end
+
+    def group_data_by_day
+      {
+        '$group' => {
+          '_id' => {
+            'year' => {
+              '$year' => '$report_time'
+            },
+            'month' => {
+              '$month' => '$report_time'
+            },
+            'day' => {
+              '$dayOfMonth' => '$report_time'
+            }
+          },
+          'changes' => {
+            '$sum' => 1
+          },
+          'dieselData' => {
+            '$push' => {
+              'report_timeframe' => '$report_timeframe',
+              'price' => '$diesel.price',
+              'change' => '$diesel.change'
+            }
+          },
+          'e5Data' => {
+            '$push' => {
+              'report_timeframe' => '$report_timeframe',
+              'price' => '$e5.price',
+              'change' => '$e5.change'
+            }
+          },
+          'e10Data' => {
+            '$push' => {
+              'report_timeframe' => '$report_timeframe',
+              'price' => '$e10.price',
+              'change' => '$e10.change'
+            }
+          }
+        }
+      }
+    end
+
+    def get_fuel_difference_pipeline(fuel_type)
+      data_field_name = fuel_type + "Data"
+      [
+        {
+          '$set' => {
+            data_field_name => {
+              '$sortArray' => {
+                'input' => '$' + data_field_name,
+                'sortBy' => {
+                  'price' => 1,
+                  'report_timeframe.hour' => 1,
+                  'report_timeframe.minute' => 1
+                }
+              }
+            }
+          }
+        },
+        {
+          '$addFields' => {
+            fuel_type => {
+              'lowest' => {
+                '$first' => '$' + data_field_name
+              },
+              'highest' => {
+                '$last' => '$' + data_field_name
+              }
+            }
+          }
+        },
+        {
+          '$addFields' => {
+            data_field_name => {
+              '$sortArray' => {
+                'input' => {
+                  '$map' => {
+                    'input' => '$' + data_field_name,
+                    'as' => 'price_report',
+                    'in' => {
+                      'report_timeframe' => '$$price_report.report_timeframe',
+                      'higher_than_lowest' => {
+                        '$subtract' => [
+                          '$$price_report.price', '$$ROOT.' + fuel_type + '.lowest.price'
+                        ]
+                      }
+                    }
+                  }
+                },
+                'sortBy' => {
+                  'report_timeframe.hour' => 1,
+                  'report_timeframe.minute' => 1
+                }
+              }
+            }
+          }
+        },
+        {
+          '$unwind' => {
+            'path' => '$' + data_field_name
+          }
+        },
+        {
+          '$group' => {
+            '_id' => '$' + data_field_name + '.report_timeframe',
+            'higherThanLowest' => {
+              '$avg' => '$' + data_field_name + '.higher_than_lowest'
+            },
+            'times' => {
+              '$sum' => 1
+            }
+          }
+        },
+        {
+          '$replaceWith' => {
+            '_id' => '$_id',
+            fuel_type => {
+              'higherThanLowest' => '$higherThanLowest',
+              'times' => '$times',
+              'impact' => { '$multiply' => [ '$higherThanLowest', '$times' ] }
+            }
+          }
+        }
+      ]
+    end
+
+    def get_diff_pipeline
+      [
+        match_station,
+        group_data_by_day,
+        {
+          '$facet' => {
+            'diesel' => get_fuel_difference_pipeline('diesel'),
+            'e5' => get_fuel_difference_pipeline('e5'),
+            'e10' => get_fuel_difference_pipeline('e10'),
+          }
+        },
+        {
+          '$replaceRoot' => {
+            'newRoot' => {
+              'data' => {
+                '$concatArrays' => [
+                  '$diesel', '$e5', '$e10'
+                ]
+              }
+            }
+          }
+        },
+        {
+          '$unwind' => {
+            'path' => '$data'
+          }
+        },
+        {
+          '$group' => {
+            '_id' => '$data._id',
+            'diesel' => {
+              '$push' => '$data.diesel'
+            },
+            'e5' => {
+              '$push' => '$data.e5'
+            },
+            'e10' => {
+              '$push' => '$data.e10'
+            }
+          }
+        },
+        {
+          '$addFields' => {
+            'diesel' => {
+              '$first' => '$diesel'
+            },
+            'e5' => {
+              '$first' => '$e5'
+            },
+            'e10' => {
+              '$first' => '$e10'
+            }
+          }
+        },
+        {
+          '$addFields' => {
+            'average' => {
+              'higherThanLowest' => {
+                '$avg' => [
+                  '$diesel.higherThanLowest', '$e5.higherThanLowest', '$e10.higherThanLowest'
+                ]
+              },
+              'times' => {
+                '$avg' => [
+                  '$diesel.times', '$e5.times', '$e10.times'
+                ]
+              }
+            }
+          }
+        },
+        {
+          '$addFields' => {
+            'average' => {
+              'impact' => {
+                '$multiply' => [
+                  '$average.higherThanLowest', '$average.times'
+                ]
+              }
+            }
+          }
+        },
+        shape_output_document
       ]
     end
 end
