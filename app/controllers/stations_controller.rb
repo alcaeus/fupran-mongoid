@@ -3,7 +3,8 @@ class StationsController < ApplicationController
 
   # GET /stations or /stations.json
   def index
-    @stations = Station.where(post_code: 82140)
+    @post_code = params[:post_code] ? params[:post_code] : 82140
+    @stations = Station.where(post_code: @post_code)
     # @stations = Station.all
     # @stations = Station.order(:uuid.asc).page params[:page]
   end

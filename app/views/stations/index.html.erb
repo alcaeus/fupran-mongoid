@@ -1,8 +1,11 @@
 <p style="color: green"><%= notice %></p>
 
-<h1>Stations</h1>
+<h1>Stations in <%= @post_code %></h1>
 
 <div id="stations" class="row row-cols-3 gy-4">
+  <% if @stations.blank? %>
+    <div class="alert alert-warning" role="alert">No stations found for this post code!</div>
+  <% end %>
   <% @stations.each do |station| %>
     <div class="col">
         <div id="<%= dom_id station %>" class="card">
