@@ -17,10 +17,21 @@ class Station
     end
   end
 
+  def changes_per_day
+    result = PriceReport.collection.aggregate(
+      [
+        match_station,
+        *create_daily_stats
+      ]
+    ).to_a[0]
+
+    result == nil ? 0 : result['changesPerDay']
+  end
+
   def aggregated_prices_pipeline
     [
       match_station,
-      group_by_timeframe,
+      create_timeframe_stats,
       add_average_change,
       shape_output_document,
     ]
@@ -59,7 +70,7 @@ class Station
       }
     end
 
-    def group_by_timeframe
+    def create_timeframe_stats
       {
         '$group' => {
           '_id' => '$report_timeframe',
@@ -77,6 +88,27 @@ class Station
           }
         }
       }
+    end
+
+    def create_daily_stats
+      [
+        {
+          '$group' => {
+            '_id' => {
+              'year' => { '$year' => '$report_time' },
+              'month' => { '$month' => '$report_time' },
+              'day' => { '$dayOfMonth' => '$report_time' }
+            },
+            'changes' => { '$sum' => 1 }
+          }
+        },
+        {
+          '$group' => {
+            '_id' => nil,
+            'changesPerDay' => { '$avg' => '$changes' }
+          }
+        }
+      ]
     end
 
     def add_average_change
