@@ -7,7 +7,6 @@
 
 <div class="row row-cols-2">
   <div class="col">
-
     <div id="<%= dom_id @station %>" class="card">
       <p class="card-img-top text-center">TODO: Map</p>
       <div class="card-body">
@@ -43,7 +42,36 @@
       </div>
     </div>
   </div>
+</div>
 
+<div class="row row-cols-2">
+  <div class="col">
+    <div class="card">
+      <div class="card-body">
+        <h5>Most popular increase times</h5>
+        <dl>
+          <% @station.popular_increase_times.each do |aggregated_price| %>
+            <dt><%= sprintf('%02d:%02d', aggregated_price['timeframe']['hour'], aggregated_price['timeframe']['minute']) %> (<%= aggregated_price['changes'] %> changes)</dt>
+            <dd><%= render "price_change", change: aggregated_price['averageChange'] %></dd>
+          <% end %>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card">
+      <div class="card-body">
+        <h5>Most popular decrease times</h5>
+        <dl>
+          <% @station.popular_decrease_times.each do |aggregated_price| %>
+            <dt><%= sprintf('%02d:%02d', aggregated_price['timeframe']['hour'], aggregated_price['timeframe']['minute']) %> (<%= aggregated_price['changes'] %> changes)</dt>
+            <dd><%= render "price_change", change: aggregated_price['averageChange'] %></dd>
+          <% end %>
+        </dl>
+      </div>
+    </div>
+  </div>
 </div>
 
 <h5>Price changes</h5>

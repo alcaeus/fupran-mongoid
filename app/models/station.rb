@@ -17,15 +17,34 @@ class Station
     end
   end
 
+  def aggregated_prices_pipeline
+    [
+      match_station,
+      group_by_timeframe,
+      add_average_change,
+      shape_output_document,
+    ]
+  end
+
   def aggregated_prices
     PriceReport.collection.aggregate(
       [
-        match_station,
-        group_by_timeframe,
+        *aggregated_prices_pipeline,
         sort_by_timeframe,
-        shape_output_document
       ]
     ).to_a
+  end
+
+  def popular_increase_times
+    PriceReport.collection.aggregate(
+      get_change_count_pipeline(match_price_increases)
+    )
+  end
+
+  def popular_decrease_times
+    PriceReport.collection.aggregate(
+      get_change_count_pipeline(match_price_decreases)
+    )
   end
 
   private
@@ -60,11 +79,47 @@ class Station
       }
     end
 
+    def add_average_change
+      {
+        '$addFields' => {
+          'averageChange' => {
+            '$avg' => ['$dieselChange', '$e5Change', '$e10Change']
+          }
+        }
+      }
+    end
+
+    def match_price_increases
+      {
+        '$match' => {
+          'averageChange' => { '$gt' => 0 }
+        }
+      }
+    end
+
+    def match_price_decreases
+      {
+        '$match' => {
+          'averageChange' => { '$lt' => 0 }
+        }
+      }
+    end
+
     def sort_by_timeframe
       {
         '$sort' => {
-          '_id.hour' => 1,
-          '_id.minute' => 1
+          'timeframe.hour' => 1,
+          'timeframe.minute' => 1
+        }
+      }
+    end
+
+    def sort_by_changes
+      {
+        '$sort' => {
+          'changes' => -1,
+          'timeframe.hour' => 1,
+          'timeframe.minute' => 1,
         }
       }
     end
@@ -75,5 +130,16 @@ class Station
           'timeframe' => '$_id'
         }
       }
+    end
+
+    def get_change_count_pipeline(matcher)
+      [
+        *aggregated_prices_pipeline,
+        matcher,
+        sort_by_changes,
+        {
+          '$limit' => 5,
+        }
+      ]
     end
 end
