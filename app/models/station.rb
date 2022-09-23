@@ -1,3 +1,5 @@
+require 'pipeline_stage'
+
 class Station
   include Mongoid::Document
 
@@ -77,108 +79,79 @@ class Station
 
   private
     def match_station
-      {
-        '$match' => {
-          'station_id' => self._id,
-          'previous_price_report' => {
-            '$ne' => nil
-          }
-        }
-      }
+      PipelineStage.match(
+        station_id: self._id,
+        previous_price_report: { '$ne' => nil })
     end
 
     def create_timeframe_stats
-      {
-        '$group' => {
-          '_id' => '$report_timeframe',
-          'changes' => {
-            '$sum' => 1
-          },
-          'dieselChange' => {
-            '$avg' => '$diesel.change'
-          },
-          'e5Change' => {
-            '$avg' => '$e5.change'
-          },
-          'e10Change' => {
-            '$avg' => '$e10.change'
-          }
+      PipelineStage.group(
+        '$report_timeframe',
+        changes: { '$sum' => 1},
+        dieselChange: {
+          '$avg' => '$diesel.change'
+        },
+        e5Change: {
+          '$avg' => '$e5.change'
+        },
+        e10Change: {
+          '$avg' => '$e10.change'
         }
-      }
+      )
     end
 
     def create_daily_stats
       [
-        {
-          '$group' => {
-            '_id' => {
-              'year' => { '$year' => '$report_time' },
-              'month' => { '$month' => '$report_time' },
-              'day' => { '$dayOfMonth' => '$report_time' }
-            },
-            'changes' => { '$sum' => 1 }
-          }
-        },
-        {
-          '$group' => {
-            '_id' => nil,
-            'changesPerDay' => { '$avg' => '$changes' }
-          }
-        }
+        PipelineStage.group(
+          {
+            'year' => { '$year' => '$report_time' },
+            'month' => { '$month' => '$report_time' },
+            'day' => { '$dayOfMonth' => '$report_time' },
+          },
+          changes: { '$sum' => 1 }
+        ),
+        PipelineStage.group(
+          nil,
+          changesPerDay: { '$avg' => '$changes' },
+        )
       ]
     end
 
     def add_average_change
-      {
-        '$addFields' => {
-          'averageChange' => {
-            '$avg' => ['$dieselChange', '$e5Change', '$e10Change']
-          }
+      PipelineStage.add_fields(
+        averageChange: {
+          '$avg' => ['$dieselChange', '$e5Change', '$e10Change']
         }
-      }
+      )
     end
 
     def match_price_increases
-      {
-        '$match' => {
-          'averageChange' => { '$gt' => 0 }
-        }
-      }
+      PipelineStage.match(averageChange: { '$gt' => 0 })
     end
 
     def match_price_decreases
-      {
-        '$match' => {
-          'averageChange' => { '$lt' => 0 }
-        }
-      }
+      PipelineStage.match(averageChange: { '$lt' => 0 })
     end
 
     def sort_by_timeframe
-      {
-        '$sort' => {
-          'timeframe.hour' => 1,
-          'timeframe.minute' => 1
-        }
-      }
+      PipelineStage.sort(
+        'timeframe.hour': 1,
+        'timeframe.minute': 1,
+      )
     end
 
     def sort_by_changes
-      {
-        '$sort' => {
-          'changes' => -1,
-          'timeframe.hour' => 1,
-          'timeframe.minute' => 1,
-        }
-      }
+      PipelineStage.sort(
+        changes: -1,
+        'timeframe.hour': 1,
+        'timeframe.minute': 1,
+      )
     end
 
     def shape_output_document
-      {
-        '$addFields' => {
-          'timeframe' => '$_id'
-        }
-      }
+      PipelineStage.add_fields(
+        timeframe: '$_id'
+      )
     end
 
     def get_change_count_pipeline(matcher)
@@ -186,58 +159,55 @@ class Station
         *aggregated_prices_pipeline,
         matcher,
         sort_by_changes,
-        {
-          '$limit' => 5,
-        }
+        PipelineStage.limit(5)
       ]
     end
 
     def group_data_by_day
-      {
-        '$group' => {
-          '_id' => {
-            'year' => {
-              '$year' => '$report_time'
-            },
-            'month' => {
-              '$month' => '$report_time'
-            },
-            'day' => {
-              '$dayOfMonth' => '$report_time'
-            }
+      PipelineStage.group(
+        {
+          'year' => {
+            '$year' => '$report_time'
           },
-          'changes' => {
-            '$sum' => 1
+          'month' => {
+            '$month' => '$report_time'
           },
-          'dieselData' => {
-            '$push' => {
-              'report_timeframe' => '$report_timeframe',
-              'price' => '$diesel.price',
-              'change' => '$diesel.change'
-            }
-          },
-          'e5Data' => {
-            '$push' => {
-              'report_timeframe' => '$report_timeframe',
-              'price' => '$e5.price',
-              'change' => '$e5.change'
-            }
-          },
-          'e10Data' => {
-            '$push' => {
-              'report_timeframe' => '$report_timeframe',
-              'price' => '$e10.price',
-              'change' => '$e10.change'
-            }
+          'day' => {
+            '$dayOfMonth' => '$report_time'
+          }
+        },
+        changes: {
+          '$sum' => 1
+        },
+        dieselData: {
+          '$push' => {
+            'report_timeframe' => '$report_timeframe',
+            'price' => '$diesel.price',
+            'change' => '$diesel.change'
+          }
+        },
+        e5Data: {
+          '$push' => {
+            'report_timeframe' => '$report_timeframe',
+            'price' => '$e5.price',
+            'change' => '$e5.change'
+          }
+        },
+        e10Data: {
+          '$push' => {
+            'report_timeframe' => '$report_timeframe',
+            'price' => '$e10.price',
+            'change' => '$e10.change'
           }
         }
-      }
+      )
     end
 
     def get_fuel_difference_pipeline(fuel_type)
       [
         {
-          '$set' => {
+          # TODO: Figure out how to pass a variably named param to a double-splat method argument
+          '$addFields' => {
             data_field_name(fuel_type) => {
               '$sortArray' => {
                 'input' => '$' + data_field_name(fuel_type),
@@ -288,24 +258,18 @@ class Station
             }
           }
         },
-        {
-          '$unwind' => {
-            'path' => '$' + data_field_name(fuel_type)
-          }
-        },
-        {
-          '$group' => {
-            '_id' => '$' + data_field_name(fuel_type) + '.report_timeframe',
-            'higherThanLowest' => {
-              '$avg' => '$' + data_field_name(fuel_type) + '.higher_than_lowest'
-            },
-            'times' => {
-              '$sum' => 1
-            }
-          }
-        },
-        {
-          '$replaceWith' => {
+        PipelineStage.unwind('$' + data_field_name(fuel_type)),
+        PipelineStage.group(
+          '$' + data_field_name(fuel_type) + '.report_timeframe',
+          higherThanLowest: {
+            '$avg' => '$' + data_field_name(fuel_type) + '.higher_than_lowest'
+          },
+          times: {
+            '$sum' => 1
+          },
+        ),
+        PipelineStage.replace_with(
+          {
             '_id' => '$_id',
             fuel_type => {
               'higherThanLowest' => '$higherThanLowest',
@@ -313,7 +277,7 @@ class Station
               'impact' => { '$multiply' => [ '$higherThanLowest', '$times' ] }
             }
           }
-        }
+        ),
       ]
     end
 
@@ -321,83 +285,67 @@ class Station
       [
         match_station,
         group_data_by_day,
-        {
-          '$facet' => {
-            'diesel' => get_fuel_difference_pipeline('diesel'),
-            'e5' => get_fuel_difference_pipeline('e5'),
-            'e10' => get_fuel_difference_pipeline('e10'),
-          }
-        },
-        {
-          '$replaceRoot' => {
-            'newRoot' => {
-              'data' => {
-                '$concatArrays' => [
-                  '$diesel', '$e5', '$e10'
-                ]
-              }
+        PipelineStage.facet(
+          diesel: get_fuel_difference_pipeline('diesel'),
+          e5: get_fuel_difference_pipeline('e5'),
+          e10: get_fuel_difference_pipeline('e10'),
+        ),
+        PipelineStage.replace_with(
+          {
+            'data' => {
+              '$concatArrays' => [
+                '$diesel', '$e5', '$e10'
+              ]
             }
           }
-        },
-        {
-          '$unwind' => {
-            'path' => '$data'
+        ),
+        PipelineStage.unwind('$data'),
+        PipelineStage.group(
+          '$data._id',
+          diesel: {
+            '$push' => '$data.diesel'
+          },
+          e5: {
+            '$push' => '$data.e5'
+          },
+          e10: {
+            '$push' => '$data.e10'
+          },
+        ),
+        PipelineStage.add_fields(
+          diesel: {
+            '$first' => '$diesel'
+          },
+          e5: {
+            '$first' => '$e5'
+          },
+          e10: {
+            '$first' => '$e10'
           }
-        },
-        {
-          '$group' => {
-            '_id' => '$data._id',
-            'diesel' => {
-              '$push' => '$data.diesel'
+        ),
+        PipelineStage.add_fields(
+          average: {
+            'higherThanLowest' => {
+              '$avg' => [
+                '$diesel.higherThanLowest', '$e5.higherThanLowest', '$e10.higherThanLowest'
+              ]
             },
-            'e5' => {
-              '$push' => '$data.e5'
-            },
-            'e10' => {
-              '$push' => '$data.e10'
+            'times' => {
+              '$avg' => [
+                '$diesel.times', '$e5.times', '$e10.times'
+              ]
             }
           }
-        },
-        {
-          '$addFields' => {
-            'diesel' => {
-              '$first' => '$diesel'
-            },
-            'e5' => {
-              '$first' => '$e5'
-            },
-            'e10' => {
-              '$first' => '$e10'
+        ),
+        PipelineStage.add_fields(
+          average: {
+            'impact' => {
+              '$multiply' => [
+                '$average.higherThanLowest', '$average.times'
+              ]
             }
-          }
-        },
-        {
-          '$addFields' => {
-            'average' => {
-              'higherThanLowest' => {
-                '$avg' => [
-                  '$diesel.higherThanLowest', '$e5.higherThanLowest', '$e10.higherThanLowest'
-                ]
-              },
-              'times' => {
-                '$avg' => [
-                  '$diesel.times', '$e5.times', '$e10.times'
-                ]
-              }
-            }
-          }
-        },
-        {
-          '$addFields' => {
-            'average' => {
-              'impact' => {
-                '$multiply' => [
-                  '$average.higherThanLowest', '$average.times'
-                ]
-              }
-            }
-          }
-        },
+          },
+        ),
         shape_output_document
       ]
     end
@@ -455,27 +403,13 @@ class Station
 
     def group_extreme_times_for_fuel(fuel_type, type, limit)
       [
-        {
-          '$unwind' => {
-            'path' => '$' + fuel_type + '.' + type + 'Times'
-          }
-        },
-        {
-          '$group' => {
-            '_id' => '$' + fuel_type + '.' + type + 'Times.report_timeframe',
-            'count' => {
-              '$sum' => 1
-            }
-          }
-        },
-        {
-          '$sort' => {
-            'count' => -1
-          }
-        },
-        {
-          '$limit' => limit
-        }
+        PipelineStage.unwind('$' + fuel_type + '.' + type + 'Times'),
+        PipelineStage.group(
+          '$' + fuel_type + '.' + type + 'Times.report_timeframe',
+          count: { '$sum' => 1 },
+        ),
+        PipelineStage.sort(count: -1),
+        PipelineStage.limit(limit),
       ]
     end
 
@@ -520,50 +454,36 @@ class Station
       [
         match_station,
         group_data_by_day,
-        {
-          '$set' => {
-            'dieselData' => sort_fuel_data_by_price('diesel'),
-            'e5Data' => sort_fuel_data_by_price('e5'),
-            'e10Data' => sort_fuel_data_by_price('e10'),
-          }
-        },
-        {
-          '$addFields' => {
-            'diesel' => find_extreme_price_for_fuel('diesel'),
-            'e5' => find_extreme_price_for_fuel('e5'),
-            'e10' => find_extreme_price_for_fuel('e10'),
-          }
-        },
-        {
-          '$addFields' => {
-            'diesel' => find_extreme_times_for_fuel('diesel'),
-            'e5' => find_extreme_times_for_fuel('e5'),
-            'e10' => find_extreme_times_for_fuel('e10'),
-          }
-        },
-        {
-          '$facet' => {
-            'diesel' => group_extreme_times_for_fuel('diesel', type, limit),
-            'e5' => group_extreme_times_for_fuel('e5', type, limit),
-            'e10' => group_extreme_times_for_fuel('e10', type, limit),
-          }
-        },
-        {
-          '$replaceWith' => {
-            'diesel' => shape_extreme_times_for_fuel('diesel'),
-            'e5' => shape_extreme_times_for_fuel('e5'),
-            'e10' => shape_extreme_times_for_fuel('e10'),
-          }
-        },
-        {
-          '$replaceWith' => shape_extreme_times(limit)
-        },
-        {
-          '$unwind': '$data'
-        },
-        {
-          '$replaceRoot' => { 'newRoot' => '$data' }
-        }
+        PipelineStage.add_fields(
+          dieselData: sort_fuel_data_by_price('diesel'),
+          e5Data: sort_fuel_data_by_price('e5'),
+          e10Data: sort_fuel_data_by_price('e10'),
+        ),
+        PipelineStage.add_fields(
+          diesel: find_extreme_price_for_fuel('diesel'),
+          e5: find_extreme_price_for_fuel('e5'),
+          e10: find_extreme_price_for_fuel('e10'),
+        ),
+        PipelineStage.add_fields(
+          diesel: find_extreme_times_for_fuel('diesel'),
+          e5: find_extreme_times_for_fuel('e5'),
+          e10: find_extreme_times_for_fuel('e10'),
+        ),
+        PipelineStage.facet(
+          diesel: group_extreme_times_for_fuel('diesel', type, limit),
+          e5: group_extreme_times_for_fuel('e5', type, limit),
+          e10: group_extreme_times_for_fuel('e10', type, limit),
+        ),
+        PipelineStage.replace_with(
+          {
+             'diesel' => shape_extreme_times_for_fuel('diesel'),
+             'e5' => shape_extreme_times_for_fuel('e5'),
+             'e10' => shape_extreme_times_for_fuel('e10'),
+           }
+        ),
+        PipelineStage.replace_with(shape_extreme_times(limit)),
+        PipelineStage.unwind('$data'),
+        PipelineStage.replace_with('$data'),
       ]
     end
 
