@@ -1,4 +1,5 @@
 require 'pipeline_stage'
+require 'pipeline_operator'
 
 class Station
   include Mongoid::Document
@@ -87,16 +88,10 @@ class Station
     def create_timeframe_stats
       PipelineStage.group(
         '$report_timeframe',
-        changes: { '$sum' => 1},
-        dieselChange: {
-          '$avg' => '$diesel.change'
-        },
-        e5Change: {
-          '$avg' => '$e5.change'
-        },
-        e10Change: {
-          '$avg' => '$e10.change'
-        }
+        changes: PipelineOperator.sum(1),
+        dieselChange: PipelineOperator.avg('$diesel.change'),
+        e5Change: PipelineOperator.avg('$e5.change'),
+        e10Change: PipelineOperator.avg('$e10.change'),
       )
     end
 
@@ -104,24 +99,22 @@ class Station
       [
         PipelineStage.group(
           {
-            'year' => { '$year' => '$report_time' },
-            'month' => { '$month' => '$report_time' },
-            'day' => { '$dayOfMonth' => '$report_time' },
+            'year' => PipelineOperator.year('$report_time'),
+            'month' => PipelineOperator.month('$report_time'),
+            'day' => PipelineOperator.day_of_month('$report_time'),
           },
-          changes: { '$sum' => 1 }
+          changes: PipelineOperator.sum(1)
         ),
         PipelineStage.group(
           nil,
-          changesPerDay: { '$avg' => '$changes' },
+          changesPerDay: PipelineOperator.avg('$changes'),
         )
       ]
     end
 
     def add_average_change
       PipelineStage.add_fields(
-        averageChange: {
-          '$avg' => ['$dieselChange', '$e5Change', '$e10Change']
-        }
+        averageChange: PipelineOperator.avg('$dieselChange', '$e5Change', '$e10Change')
       )
     end
 
@@ -166,40 +159,32 @@ class Station
     def group_data_by_day
       PipelineStage.group(
         {
-          'year' => {
-            '$year' => '$report_time'
-          },
-          'month' => {
-            '$month' => '$report_time'
-          },
-          'day' => {
-            '$dayOfMonth' => '$report_time'
-          }
+          'year' => PipelineOperator.year('$report_time'),
+          'month' => PipelineOperator.month('$report_time'),
+          'day' => PipelineOperator.day_of_month('$report_time'),
         },
-        changes: {
-          '$sum' => 1
-        },
-        dieselData: {
-          '$push' => {
+        changes: PipelineOperator.sum(1),
+        dieselData: PipelineOperator.push(
+          {
             'report_timeframe' => '$report_timeframe',
             'price' => '$diesel.price',
             'change' => '$diesel.change'
           }
-        },
-        e5Data: {
-          '$push' => {
+        ),
+        e5Data: PipelineOperator.push(
+          {
             'report_timeframe' => '$report_timeframe',
             'price' => '$e5.price',
             'change' => '$e5.change'
           }
-        },
-        e10Data: {
-          '$push' => {
+        ),
+        e10Data: PipelineOperator.push(
+          {
             'report_timeframe' => '$report_timeframe',
             'price' => '$e10.price',
             'change' => '$e10.change'
           }
-        }
+        )
       )
     end
 
@@ -208,65 +193,46 @@ class Station
         {
           # TODO: Figure out how to pass a variably named param to a double-splat method argument
           '$addFields' => {
-            data_field_name(fuel_type) => {
-              '$sortArray' => {
-                'input' => '$' + data_field_name(fuel_type),
-                'sortBy' => {
-                  'price' => 1,
-                  'report_timeframe.hour' => 1,
-                  'report_timeframe.minute' => 1
-                }
-              }
-            }
+            data_field_name(fuel_type) => PipelineOperator.sort_array(
+              '$' + data_field_name(fuel_type),
+              'price' => 1,
+              'report_timeframe.hour' => 1,
+              'report_timeframe.minute' => 1,
+            )
           }
         },
         {
           '$addFields' => {
             fuel_type => {
-              'lowest' => {
-                '$first' => '$' + data_field_name(fuel_type)
-              },
-              'highest' => {
-                '$last' => '$' + data_field_name(fuel_type)
-              }
+              'lowest' => PipelineOperator.first('$' + data_field_name(fuel_type)),
+              'highest' => PipelineOperator.last('$' + data_field_name(fuel_type)),
             }
           }
         },
         {
           '$addFields' => {
-            data_field_name(fuel_type) => {
-              '$sortArray' => {
-                'input' => {
-                  '$map' => {
-                    'input' => '$' + data_field_name(fuel_type),
-                    'as' => 'price_report',
-                    'in' => {
-                      'report_timeframe' => '$$price_report.report_timeframe',
-                      'higher_than_lowest' => {
-                        '$subtract' => [
-                          '$$price_report.price', '$$ROOT.' + fuel_type + '.lowest.price'
-                        ]
-                      }
-                    }
-                  }
-                },
-                'sortBy' => {
-                  'report_timeframe.hour' => 1,
-                  'report_timeframe.minute' => 1
+            data_field_name(fuel_type) => PipelineOperator.sort_array(
+              PipelineOperator.map(
+                '$' + data_field_name(fuel_type),
+                'price_report',
+                {
+                  'report_timeframe' => '$$price_report.report_timeframe',
+                  'higher_than_lowest' => PipelineOperator.subtract(
+                    '$$price_report.price',
+                    '$$ROOT.' + fuel_type + '.lowest.price',
+                  )
                 }
-              }
-            }
+              ),
+              'report_timeframe.hour' => 1,
+              'report_timeframe.minute' => 1,
+            )
           }
         },
         PipelineStage.unwind('$' + data_field_name(fuel_type)),
         PipelineStage.group(
           '$' + data_field_name(fuel_type) + '.report_timeframe',
-          higherThanLowest: {
-            '$avg' => '$' + data_field_name(fuel_type) + '.higher_than_lowest'
-          },
-          times: {
-            '$sum' => 1
-          },
+          higherThanLowest: PipelineOperator.avg('$' + data_field_name(fuel_type) + '.higher_than_lowest'),
+          times: PipelineOperator.sum(1),
         ),
         PipelineStage.replace_with(
           {
@@ -274,7 +240,7 @@ class Station
             fuel_type => {
               'higherThanLowest' => '$higherThanLowest',
               'times' => '$times',
-              'impact' => { '$multiply' => [ '$higherThanLowest', '$times' ] }
+              'impact' => PipelineOperator.multiply('$higherThanLowest', '$times'),
             }
           }
         ),
@@ -292,58 +258,38 @@ class Station
         ),
         PipelineStage.replace_with(
           {
-            'data' => {
-              '$concatArrays' => [
-                '$diesel', '$e5', '$e10'
-              ]
-            }
+            'data' => PipelineOperator.concat_arrays('$diesel', '$e5', '$e10')
           }
         ),
         PipelineStage.unwind('$data'),
         PipelineStage.group(
           '$data._id',
-          diesel: {
-            '$push' => '$data.diesel'
-          },
-          e5: {
-            '$push' => '$data.e5'
-          },
-          e10: {
-            '$push' => '$data.e10'
-          },
+          diesel: PipelineOperator.push('$data.diesel'),
+          e5: PipelineOperator.push('$data.e5'),
+          e10: PipelineOperator.push('$data.e10'),
         ),
         PipelineStage.add_fields(
-          diesel: {
-            '$first' => '$diesel'
-          },
-          e5: {
-            '$first' => '$e5'
-          },
-          e10: {
-            '$first' => '$e10'
+          diesel: PipelineOperator.first('$diesel'),
+          e5: PipelineOperator.first('$e5'),
+          e10: PipelineOperator.first('$e10'),
+        ),
+        PipelineStage.add_fields(
+          average: {
+            'higherThanLowest' => PipelineOperator.avg(
+              '$diesel.higherThanLowest',
+              '$e5.higherThanLowest',
+              '$e10.higherThanLowest'
+            ),
+            'times' => PipelineOperator.avg(
+              '$diesel.times',
+              '$e5.times',
+              '$e10.times'
+            )
           }
         ),
         PipelineStage.add_fields(
           average: {
-            'higherThanLowest' => {
-              '$avg' => [
-                '$diesel.higherThanLowest', '$e5.higherThanLowest', '$e10.higherThanLowest'
-              ]
-            },
-            'times' => {
-              '$avg' => [
-                '$diesel.times', '$e5.times', '$e10.times'
-              ]
-            }
-          }
-        ),
-        PipelineStage.add_fields(
-          average: {
-            'impact' => {
-              '$multiply' => [
-                '$average.higherThanLowest', '$average.times'
-              ]
-            }
+            'impact' => PipelineOperator.multiply('$average.higherThanLowest', '$average.times'),
           },
         ),
         shape_output_document
@@ -351,53 +297,39 @@ class Station
     end
 
     def sort_fuel_data_by_price(fuel_type)
-      {
-        '$sortArray' => {
-          'input' => '$' + data_field_name(fuel_type),
-          'sortBy' => {
-            'price' => 1,
-            'report_timeframe.hour' => 1,
-            'report_timeframe.minute' => 1
-          }
-        }
-      }
+      PipelineOperator.sort_array(
+        '$' + data_field_name(fuel_type),
+        'price' => 1,
+        'report_timeframe.hour' => 1,
+        'report_timeframe.minute' => 1
+      )
     end
 
     def find_extreme_price_for_fuel(fuel_type)
       {
-        'lowestEntry' => {
-          '$first' => '$' + data_field_name(fuel_type)
-        },
-        'highestEntry' => {
-          '$last' => '$' + data_field_name(fuel_type)
-        }
+        'lowestEntry' => PipelineOperator.first('$' + data_field_name(fuel_type)),
+        'highestEntry' => PipelineOperator.last('$' + data_field_name(fuel_type)),
       }
     end
 
     def find_extreme_times_for_fuel(fuel_type)
       {
-        'lowestTimes' => {
-          '$filter' => {
-            'input' => '$' + data_field_name(fuel_type),
-            'as' => 'priceReport',
-            'cond' => {
-              '$eq' => [
-                '$$priceReport.price', '$' + fuel_type + '.lowestEntry.price'
-              ]
-            }
-          }
-        },
-        'highestTimes' => {
-          '$filter' => {
-            'input' => '$' + data_field_name(fuel_type),
-            'as' => 'priceReport',
-            'cond' => {
-              '$eq' => [
-                '$$priceReport.price', '$' + fuel_type + '.highestEntry.price'
-              ]
-            }
-          }
-        }
+        'lowestTimes' => PipelineOperator.filter(
+          '$' + data_field_name(fuel_type),
+          PipelineOperator.eq(
+            '$$priceReport.price',
+            '$' + fuel_type + '.lowestEntry.price'
+          ),
+          'priceReport',
+        ),
+        'highestTimes' => PipelineOperator.filter(
+          '$' + data_field_name(fuel_type),
+          PipelineOperator.eq(
+            '$$priceReport.price',
+            '$' + fuel_type + '.highestEntry.price'
+          ),
+          'priceReport',
+        ),
       }
     end
 
@@ -406,7 +338,7 @@ class Station
         PipelineStage.unwind('$' + fuel_type + '.' + type + 'Times'),
         PipelineStage.group(
           '$' + fuel_type + '.' + type + 'Times.report_timeframe',
-          count: { '$sum' => 1 },
+          count: PipelineOperator.sum(1),
         ),
         PipelineStage.sort(count: -1),
         PipelineStage.limit(limit),
@@ -414,18 +346,16 @@ class Station
     end
 
     def shape_extreme_times_for_fuel(fuel_type)
-      {
-        '$map' => {
-          'input' => '$' + fuel_type,
-          'as' => 'report',
-          'in' => {
-            fuel_type => {
-              'timeframe' => '$$report._id',
-              'count' => '$$report.count'
-            }
+      PipelineOperator.map(
+        '$' + fuel_type,
+        'report',
+        {
+          fuel_type => {
+            'timeframe' => '$$report._id',
+            'count' => '$$report.count'
           }
         }
-      }
+      )
     end
 
     def shape_extreme_times(limit)
@@ -433,13 +363,11 @@ class Station
 
       for i in 0..limit-1 do
         elements.push(
-          {
-            '$mergeObjects' => [
-              { '$arrayElemAt' => ['$diesel', i] },
-              { '$arrayElemAt' => ['$e5', i] },
-              { '$arrayElemAt' => ['$e10', i] },
-            ],
-          }
+          PipelineOperator.merge_objects(
+            PipelineOperator.array_elem_at('$diesel', i),
+            PipelineOperator.array_elem_at('$e5', i),
+            PipelineOperator.array_elem_at('$e10', i),
+          )
         )
       end
 
