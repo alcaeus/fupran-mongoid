@@ -67,6 +67,14 @@ class Station
     )
   end
 
+  def popular_cheapest_times
+    PriceReport.collection.aggregate(get_popular_extreme_times_pipeline('lowest'))
+  end
+
+  def popular_expensive_times
+    PriceReport.collection.aggregate(get_popular_extreme_times_pipeline('highest'))
+  end
+
   private
     def match_station
       {
@@ -227,13 +235,12 @@ class Station
     end
 
     def get_fuel_difference_pipeline(fuel_type)
-      data_field_name = fuel_type + "Data"
       [
         {
           '$set' => {
-            data_field_name => {
+            data_field_name(fuel_type) => {
               '$sortArray' => {
-                'input' => '$' + data_field_name,
+                'input' => '$' + data_field_name(fuel_type),
                 'sortBy' => {
                   'price' => 1,
                   'report_timeframe.hour' => 1,
@@ -247,21 +254,21 @@ class Station
           '$addFields' => {
             fuel_type => {
               'lowest' => {
-                '$first' => '$' + data_field_name
+                '$first' => '$' + data_field_name(fuel_type)
               },
               'highest' => {
-                '$last' => '$' + data_field_name
+                '$last' => '$' + data_field_name(fuel_type)
               }
             }
           }
         },
         {
           '$addFields' => {
-            data_field_name => {
+            data_field_name(fuel_type) => {
               '$sortArray' => {
                 'input' => {
                   '$map' => {
-                    'input' => '$' + data_field_name,
+                    'input' => '$' + data_field_name(fuel_type),
                     'as' => 'price_report',
                     'in' => {
                       'report_timeframe' => '$$price_report.report_timeframe',
@@ -283,14 +290,14 @@ class Station
         },
         {
           '$unwind' => {
-            'path' => '$' + data_field_name
+            'path' => '$' + data_field_name(fuel_type)
           }
         },
         {
           '$group' => {
-            '_id' => '$' + data_field_name + '.report_timeframe',
+            '_id' => '$' + data_field_name(fuel_type) + '.report_timeframe',
             'higherThanLowest' => {
-              '$avg' => '$' + data_field_name + '.higher_than_lowest'
+              '$avg' => '$' + data_field_name(fuel_type) + '.higher_than_lowest'
             },
             'times' => {
               '$sum' => 1
@@ -393,5 +400,174 @@ class Station
         },
         shape_output_document
       ]
+    end
+
+    def sort_fuel_data_by_price(fuel_type)
+      {
+        '$sortArray' => {
+          'input' => '$' + data_field_name(fuel_type),
+          'sortBy' => {
+            'price' => 1,
+            'report_timeframe.hour' => 1,
+            'report_timeframe.minute' => 1
+          }
+        }
+      }
+    end
+
+    def find_extreme_price_for_fuel(fuel_type)
+      {
+        'lowestEntry' => {
+          '$first' => '$' + data_field_name(fuel_type)
+        },
+        'highestEntry' => {
+          '$last' => '$' + data_field_name(fuel_type)
+        }
+      }
+    end
+
+    def find_extreme_times_for_fuel(fuel_type)
+      {
+        'lowestTimes' => {
+          '$filter' => {
+            'input' => '$' + data_field_name(fuel_type),
+            'as' => 'priceReport',
+            'cond' => {
+              '$eq' => [
+                '$$priceReport.price', '$' + fuel_type + '.lowestEntry.price'
+              ]
+            }
+          }
+        },
+        'highestTimes' => {
+          '$filter' => {
+            'input' => '$' + data_field_name(fuel_type),
+            'as' => 'priceReport',
+            'cond' => {
+              '$eq' => [
+                '$$priceReport.price', '$' + fuel_type + '.highestEntry.price'
+              ]
+            }
+          }
+        }
+      }
+    end
+
+    def group_extreme_times_for_fuel(fuel_type, type, limit)
+      [
+        {
+          '$unwind' => {
+            'path' => '$' + fuel_type + '.' + type + 'Times'
+          }
+        },
+        {
+          '$group' => {
+            '_id' => '$' + fuel_type + '.' + type + 'Times.report_timeframe',
+            'count' => {
+              '$sum' => 1
+            }
+          }
+        },
+        {
+          '$sort' => {
+            'count' => -1
+          }
+        },
+        {
+          '$limit' => limit
+        }
+      ]
+    end
+
+    def shape_extreme_times_for_fuel(fuel_type)
+      {
+        '$map' => {
+          'input' => '$' + fuel_type,
+          'as' => 'report',
+          'in' => {
+            fuel_type => {
+              'timeframe' => '$$report._id',
+              'count' => '$$report.count'
+            }
+          }
+        }
+      }
+    end
+
+    def shape_extreme_times(limit)
+      elements = []
+
+      for i in 0..limit-1 do
+        elements.push(
+          {
+            '$mergeObjects' => [
+              { '$arrayElemAt' => ['$diesel', i] },
+              { '$arrayElemAt' => ['$e5', i] },
+              { '$arrayElemAt' => ['$e10', i] },
+            ],
+          }
+        )
+      end
+
+      {
+        data: elements
+      }
+    end
+
+    def get_popular_extreme_times_pipeline(type)
+      limit = 3
+
+      [
+        match_station,
+        group_data_by_day,
+        {
+          '$set' => {
+            'dieselData' => sort_fuel_data_by_price('diesel'),
+            'e5Data' => sort_fuel_data_by_price('e5'),
+            'e10Data' => sort_fuel_data_by_price('e10'),
+          }
+        },
+        {
+          '$addFields' => {
+            'diesel' => find_extreme_price_for_fuel('diesel'),
+            'e5' => find_extreme_price_for_fuel('e5'),
+            'e10' => find_extreme_price_for_fuel('e10'),
+          }
+        },
+        {
+          '$addFields' => {
+            'diesel' => find_extreme_times_for_fuel('diesel'),
+            'e5' => find_extreme_times_for_fuel('e5'),
+            'e10' => find_extreme_times_for_fuel('e10'),
+          }
+        },
+        {
+          '$facet' => {
+            'diesel' => group_extreme_times_for_fuel('diesel', type, limit),
+            'e5' => group_extreme_times_for_fuel('e5', type, limit),
+            'e10' => group_extreme_times_for_fuel('e10', type, limit),
+          }
+        },
+        {
+          '$replaceWith' => {
+            'diesel' => shape_extreme_times_for_fuel('diesel'),
+            'e5' => shape_extreme_times_for_fuel('e5'),
+            'e10' => shape_extreme_times_for_fuel('e10'),
+          }
+        },
+        {
+          '$replaceWith' => shape_extreme_times(limit)
+        },
+        {
+          '$unwind': '$data'
+        },
+        {
+          '$replaceRoot' => { 'newRoot' => '$data' }
+        }
+      ]
+    end
+
+    def data_field_name(fuel_type)
+      fuel_type + 'Data'
     end
 end
