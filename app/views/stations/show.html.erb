@@ -33,11 +33,11 @@
           <h6 class="card-subtitle text-muted">Reported on <%= @station.price_reports.latest_price.report_time %></h6>
           <dl>
             <dt>Diesel</dt>
-            <dd><%= sprintf('%.3f €', @station.price_reports.latest_price.diesel.price.fdiv(1000)) %></dd>
+            <dd><%= render "price", price: @station.price_reports.latest_price.diesel.price %></dd>
             <dt>E5</dt>
-            <dd><%= sprintf('%.3f €', @station.price_reports.latest_price.e5.price.fdiv(1000)) %></dd>
+            <dd><%= render "price", price: @station.price_reports.latest_price.e5.price %></dd>
             <dt>E10</dt>
-            <dd><%= sprintf('%.3f €', @station.price_reports.latest_price.e10.price.fdiv(1000)) %></dd>
+            <dd><%= render "price", price: @station.price_reports.latest_price.e10.price %></dd>
           </dl>
         <% else %>
           <h6 class="card-subtitle text-muted">No prices reported</h6>

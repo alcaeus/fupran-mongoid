@@ -25,9 +25,9 @@
 
           <ul class="list-group list-group-flush">
             <% if station.price_reports.latest_price -%>
-              <li class="list-group-item">Diesel: <%= sprintf('%.3f €', station.price_reports.latest_price.diesel.price.fdiv(1000)) %></li>
-              <li class="list-group-item">E5: <%= sprintf('%.3f €', station.price_reports.latest_price.e5.price.fdiv(1000)) %></li>
-              <li class="list-group-item">E10: <%= sprintf('%.3f €', station.price_reports.latest_price.e10.price.fdiv(1000)) %></li>
+              <li class="list-group-item">Diesel: <%= render "price", price: station.price_reports.latest_price.diesel.price %></li>
+              <li class="list-group-item">E5: <%= render "price", price: station.price_reports.latest_price.e5.price %></li>
+              <li class="list-group-item">E10: <%= render "price", price: station.price_reports.latest_price.e10.price %></li>
             <% else %>
               <li class="list-group-item">Diesel: --</li>
               <li class="list-group-item">E5: --</li>
